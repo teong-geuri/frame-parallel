@@ -26,3 +26,4 @@ jobs:
       with:
         files: build/libs/${{ github.event.repository.name }}.jar
         generate_release_notes: true
+
