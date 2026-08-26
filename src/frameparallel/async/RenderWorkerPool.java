@@ -1,41 +1,87 @@
 package frameparallel.async;
 
 import arc.util.*;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.*;
+import java.util.function.BiConsumer;
 
 /**
- * 렌더링 워커 스레드 풀.
+ * 스레드 우선순위 미세 조절 기반 멀티코어 워커 스레드 풀.
  *
- * 설계 원칙 (1프레임 look-ahead 파이프라이닝):
- *   - 프레임 N 시작: 프레임 N-1에서 백그라운드에 넘겼던 계산 결과를 수확(await)
- *   - 프레임 N 렌더링: 수확된 결과를 GL에 업로드
- *   - 프레임 N 끝: 프레임 N+1에서 쓸 계산을 백그라운드에 제출
- *
- * 이 방식은 1프레임의 미소한 레이턴시를 추가하지만,
- * 메인 스레드가 CPU-heavy 계산을 기다리지 않아도 되므로 프레임 시간이 줄어든다.
+ * 코어 할당 및 우선순위 방식:
+ *   - 코어 수 하드 캡 제한 없이 메인 GL 스레드 1개 몫을 제외한 [전체 코어 - 1]개를 워커 코어로 가동.
+ *   - 워커 스레드 우선순위를 일반 스레드보다 약간 낮게(NORM_PRIORITY - 1) 설정하여
+ *     타 앱이나 시스템 작업 요청 시 OS 스케줄러가 알아서 자원을 양보하도록 함.
  */
 public class RenderWorkerPool {
     private final ExecutorService pool;
+    private final int workerCount;
+    private final int totalCores;
 
     public RenderWorkerPool() {
-        // 메인 스레드 1개를 반드시 남겨두고 나머지 코어를 워커로 사용
-        int cores = Runtime.getRuntime().availableProcessors();
-        int workerCount = Math.max(1, cores - 1);
+        this.totalCores = Runtime.getRuntime().availableProcessors();
+        // 메인 스레드 1개를 남겨두고 풀 워커 코어 할당 (하드 캡 제거)
+        this.workerCount = Math.max(1, totalCores - 1);
+
         this.pool = Executors.newFixedThreadPool(workerCount, r -> {
             Thread t = new Thread(r, "FrameParallel-Worker");
             t.setDaemon(true);
+            // 우선순위를 약간 낮추어(NORM_PRIORITY - 1) 타 앱 요청 시 자연스러운 자원 양보 유도
             t.setPriority(Thread.NORM_PRIORITY - 1);
             return t;
         });
-        Log.info("[FrameParallel] Worker pool initialized: @ threads (@ cores available)", workerCount, cores);
+
+        Log.info("[FrameParallel] Worker pool initialized: @ worker threads active across @ total CPU cores (Priority: NORM_PRIORITY - 1).", workerCount, totalCores);
     }
 
-    /** 작업을 백그라운드에 제출하고 Future를 반환한다. */
+    /** 작업 1개를 백그라운드 워커 코어에 제출 */
     public Future<?> submit(Runnable task) {
         return pool.submit(task);
     }
 
-    /** Future 결과를 메인 스레드에서 동기적으로 수확한다. 예외는 로그로만 기록. */
+    /**
+     * 동적 래인지 분할 연산.
+     */
+    public void parallelBatch(int totalItems, int minBatchSize, BiConsumer<Integer, Integer> batchConsumer) {
+        if (totalItems <= 0 || batchConsumer == null) return;
+
+        if (totalItems <= minBatchSize || workerCount <= 1) {
+            try {
+                batchConsumer.accept(0, totalItems);
+            } catch (Throwable t) {
+                Log.err("[FrameParallel] Single batch execution error", t);
+            }
+            return;
+        }
+
+        int threadsToUse = Math.min(workerCount, (int) Math.ceil((double) totalItems / minBatchSize));
+        int chunkSize = (int) Math.ceil((double) totalItems / threadsToUse);
+
+        List<Future<?>> futures = new ArrayList<>(threadsToUse);
+
+        for (int t = 0; t < threadsToUse; t++) {
+            final int start = t * chunkSize;
+            final int end = Math.min(start + chunkSize, totalItems);
+
+            if (start >= totalItems) break;
+
+            futures.add(pool.submit(() -> {
+                try {
+                    batchConsumer.accept(start, end);
+                } catch (Throwable ex) {
+                    Log.err("[FrameParallel] Parallel batch worker error", ex);
+                }
+            }));
+        }
+
+        for (Future<?> f : futures) {
+            await(f);
+        }
+    }
+
+    /** Future 결과를 메인 스레드에서 동기적으로 수확 */
     public static void await(Future<?> future) {
         if (future == null) return;
         try {
@@ -43,6 +89,14 @@ public class RenderWorkerPool {
         } catch (Throwable t) {
             Log.err("[FrameParallel] Worker error", t);
         }
+    }
+
+    public int getWorkerCount() {
+        return workerCount;
+    }
+
+    public int getTotalCores() {
+        return totalCores;
     }
 
     public void shutdown() {
