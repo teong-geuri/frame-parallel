@@ -14,7 +14,7 @@ main: "frameparallel.FrameParallelMod"
 description: "Multi-core parallelization mod offloading Minimap, PowerGraph, Fog, AI Target Search, Building Search, Fire/Puddle, Audio, and Trail rendering to worker threads."
 
 #the mod version
-version: 1.3.1
+version: 1.4.0
 
 #the minimum game build required to run this mod
 minGameVersion: 159.7

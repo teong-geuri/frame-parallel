@@ -10,6 +10,7 @@ import mindustry.graphics.*;
 import mindustry.io.*;
 import mindustry.world.*;
 import frameparallel.async.RenderWorkerPool;
+import frameparallel.util.PlatformUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,7 +71,14 @@ public class AsyncMinimapHandler {
 
         int w = Vars.world.width(), h = Vars.world.height();
         int total = w * h;
+        // 안드로이드 메모리 제한: MINIMAP_MAX_BUFFER(10만 타일) 초과 시 경고 후 스킵
         if (total <= 0) return;
+        if (total > PlatformUtil.MINIMAP_MAX_BUFFER) {
+            if (PlatformUtil.IS_ANDROID) {
+                Log.warn("[FrameParallel] Map too large for Android minimap buffer (@x@ = @ tiles, limit @). Skipping parallel init.", w, h, total, PlatformUtil.MINIMAP_MAX_BUFFER);
+                return;
+            }
+        }
 
         if (pendingPositions.length < total) {
             pendingPositions = new int[total];

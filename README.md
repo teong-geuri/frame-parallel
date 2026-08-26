@@ -1,4 +1,4 @@
-# Frame Parallelization Mod (v1.3.1)
+# Frame Parallelization Mod (v1.4.0)
 
 High-performance client-side multi-core offloading mod for Mindustry (`v159.7+`).
 

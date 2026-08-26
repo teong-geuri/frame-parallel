@@ -1,6 +1,7 @@
 package frameparallel.async;
 
 import arc.util.*;
+import frameparallel.util.PlatformUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -8,12 +9,12 @@ import java.util.concurrent.*;
 import java.util.function.BiConsumer;
 
 /**
- * 스레드 우선순위 미세 조절 기반 멀티코어 워커 스레드 풀.
+ * 플랫폼 적응형 멀티코어 워커 스레드 풀.
  *
  * 코어 할당 및 우선순위 방식:
- *   - 코어 수 하드 캡 제한 없이 메인 GL 스레드 1개 몫을 제외한 [전체 코어 - 1]개를 워커 코어로 가동.
- *   - 워커 스레드 우선순위를 일반 스레드보다 약간 높게(NORM_PRIORITY + 1) 설정하여
- *     코어 할당 순위가 올라가 병렬 연산이 더 빠르게 CPU 시간을 점유하도록 함.
+ *   - 메인 GL 스레드 1개 몫을 제외한 [전체 코어 - 1]개를 워커 코어로 가동.
+ *   - 데스크탑: NORM_PRIORITY + 1 (코어 할당 속도 향상)
+ *   - Android:  NORM_PRIORITY (ART 스케줄러가 우선순위 조작을 무시하므로 기본값 유지)
  */
 public class RenderWorkerPool {
     private final ExecutorService pool;
@@ -22,18 +23,22 @@ public class RenderWorkerPool {
 
     public RenderWorkerPool() {
         this.totalCores = Runtime.getRuntime().availableProcessors();
-        // 메인 스레드 1개를 남겨두고 풀 워커 코어 할당 (하드 캡 제거)
+        // 메인 스레드 1개 남겨두고 전체 워커 코어 할당
         this.workerCount = Math.max(1, totalCores - 1);
+
+        final int priority = PlatformUtil.WORKER_PRIORITY;
 
         this.pool = Executors.newFixedThreadPool(workerCount, r -> {
             Thread t = new Thread(r, "FrameParallel-Worker");
             t.setDaemon(true);
-            // 우선순위를 약간 높여(NORM_PRIORITY + 1) 코어 할당 속도 향상
-            t.setPriority(Thread.NORM_PRIORITY + 1);
+            t.setPriority(priority);
             return t;
         });
 
-        Log.info("[FrameParallel] Worker pool initialized: @ worker threads active across @ total CPU cores (Priority: NORM_PRIORITY + 1).", workerCount, totalCores);
+        Log.info("[FrameParallel] Worker pool initialized: @ workers / @ cores | Platform: @ | Priority: @",
+            workerCount, totalCores,
+            PlatformUtil.IS_ANDROID ? "Android" : "Desktop",
+            priority);
     }
 
     /** 작업 1개를 백그라운드 워커 코어에 제출 */
@@ -43,6 +48,7 @@ public class RenderWorkerPool {
 
     /**
      * 동적 래인지 분할 연산.
+     * minBatchSize 기본값은 PlatformUtil.MIN_BATCH_SIZE를 사용 권장.
      */
     public void parallelBatch(int totalItems, int minBatchSize, BiConsumer<Integer, Integer> batchConsumer) {
         if (totalItems <= 0 || batchConsumer == null) return;

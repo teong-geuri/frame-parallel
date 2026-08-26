@@ -9,7 +9,7 @@ import frameparallel.renderers.*;
 
 public class FrameParallelMod extends Mod {
 
-    public static final String VERSION = "1.3.1";
+    public static final String VERSION = "1.4.0";
 
     private RenderWorkerPool workerPool;
 
