@@ -1,9 +1,10 @@
 package frameparallel.renderers;
 
-import arc.struct.*;
 import arc.util.*;
 import mindustry.*;
-import mindustry.gen.*;
+import mindustry.entities.EntityGroup;
+import mindustry.gen.Groups;
+import mindustry.gen.PowerGraphUpdaterc;
 import mindustry.world.blocks.power.PowerGraph;
 import frameparallel.async.RenderWorkerPool;
 
@@ -35,18 +36,18 @@ public class AsyncPowerGraphHandler {
     public void update() {
         if (!enabled || Vars.state == null || !Vars.state.isPlaying() || Vars.state.isEditor()) return;
 
-        Seq<PowerGraph> graphs = Groups.powerGraph;
-        if (graphs == null || graphs.size == 0) return;
+        EntityGroup<PowerGraphUpdaterc> group = Groups.powerGraph;
+        if (group == null || group.isEmpty()) return;
 
-        int size = graphs.size;
+        int size = group.size();
 
         // 전력망이 1개이거나 소수일 때는 메인 스레드 오버헤드 방지를 위해 즉시 실행
         if (size <= 2) {
             for (int i = 0; i < size; i++) {
-                PowerGraph g = graphs.get(i);
-                if (g != null) {
+                PowerGraphUpdaterc updater = group.index(i);
+                if (updater != null && updater.graph() != null) {
                     try {
-                        g.update();
+                        updater.graph().update();
                     } catch (Throwable t) {
                         Log.err("[FrameParallel] Error in single PowerGraph update", t);
                     }
@@ -69,10 +70,10 @@ public class AsyncPowerGraphHandler {
 
             futures.add(workerPool.submit(() -> {
                 for (int i = start; i < end; i++) {
-                    PowerGraph g = graphs.get(i);
-                    if (g != null) {
+                    PowerGraphUpdaterc updater = group.index(i);
+                    if (updater != null && updater.graph() != null) {
                         try {
-                            g.update();
+                            updater.graph().update();
                         } catch (Throwable ex) {
                             Log.err("[FrameParallel] Error in parallel PowerGraph update", ex);
                         }

@@ -1,12 +1,12 @@
 package frameparallel.renderers;
 
-import arc.struct.*;
 import arc.util.*;
 import mindustry.*;
+import mindustry.entities.EntityGroup;
 import mindustry.entities.Units;
-import mindustry.game.Team;
 import mindustry.gen.Building;
 import mindustry.gen.Groups;
+import mindustry.gen.Teamc;
 import mindustry.gen.Unit;
 import frameparallel.async.RenderWorkerPool;
 
@@ -44,24 +44,22 @@ public class AsyncTargetSearchHandler {
         RenderWorkerPool.await(pendingTask);
         pendingTask = null;
 
-        // 2) 유닛 목록 스냅샷 생성 후 백그라운드 스레드에 사전 탐색 작업 오프로드
-        Seq<Unit> units = Groups.unit;
-        if (units == null || units.size == 0) return;
+        // 2) 유닛 목록 확인 및 백그라운드 스레드에 사전 탐색 작업 오프로드
+        EntityGroup<Unit> units = Groups.unit;
+        if (units == null || units.isEmpty()) return;
 
-        // 경량 유닛 포인터 배열 복사
-        Unit[] snapshot = units.cipher();
-        int count = units.size;
+        int count = units.size();
 
         pendingTask = workerPool.submit(() -> {
             targetCache.clear();
             for (int i = 0; i < count; i++) {
-                Unit u = snapshot[i];
+                Unit u = units.index(i);
                 if (u != null && u.isValid() && u.isAI()) {
                     try {
-                        // 사전 타깃 쿼드트리 탐색
-                        Building closest = Units.closestTarget(u.team, u.x, u.y, u.range(), b -> b.block.targetable, b -> true);
-                        if (closest != null) {
-                            targetCache.put(u.id, closest);
+                        // 사전 타깃 쿼드트리 탐색 (5번째: UnitPred, 6번째: TilePred)
+                        Teamc closest = Units.closestTarget(u.team, u.x, u.y, u.range(), unit -> true, b -> b.block.targetable);
+                        if (closest instanceof Building b) {
+                            targetCache.put(u.id, b);
                         }
                     } catch (Throwable ignored) {
                     }
