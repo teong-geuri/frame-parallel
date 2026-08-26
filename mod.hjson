@@ -14,7 +14,7 @@ main: "frameparallel.FrameParallelMod"
 description: "Client-side async minimap color calculation. OpenGL drawing and game state remain on the main thread for multiplayer compatibility."
 
 #the mod version
-version: 1.1.0
+version: 1.2.0
 
 #the minimum game build required to run this mod
 minGameVersion: 159.7
