@@ -128,7 +128,7 @@ public class AsyncMinimapHandler {
                 pixmap.set(tx, pixmap.height - 1 - ty, color);
             }
         }
-        texture.load(texture.TextureData);
+        texture.load(texture.getTextureData());
     }
 
     private static int colorForTile(Tile tile) {
