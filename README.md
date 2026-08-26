@@ -4,38 +4,48 @@ High-performance client-side multi-core offloading mod for Mindustry (`v159.7+`)
 
 ---
 
-## ⚡ Overview & Version 1.3.0 Features
+## ⚡ Overview
 
 This mod offloads CPU-heavy rendering preparation and game-state read queries from the single main thread to dedicated worker threads (`RenderWorkerPool`), eliminating frame drops and stuttering in large maps and late-game mega-bases.
 
-### 🛠️ Subsystem Parallelization Matrix (9 Modules)
+---
 
-| Category | Module | Partitioning Strategy | Description |
+## 🛠️ Subsystem Parallelization Matrix (9 Modules)
+
+| Priority | Module | Strategy | Description |
 |---|---|---|---|
-| **Phase 1 Core** | `ParticleRendererController` | Async Pipeline | Forced activation of Mindustry's unused async point-sprite particle renderer (`useAsync + mainExecutor`). |
-| **Phase 1 Core** | `AsyncMinimapHandler` | 1-Frame Look-Ahead | Double-buffered `colorForTile()` calculation offloaded to worker pool. |
-| **Phase 2 Non-Chunk** | `AsyncPowerGraphHandler` | Graph Topology | Independent power networks (`PowerGraph`) updated concurrently across worker threads. |
-| **Phase 2 Non-Chunk** | `AsyncTargetSearchHandler` | QuadTree Pre-search | AI unit target candidate searching pre-cached in parallel before game update. |
-| **Phase 2 Non-Chunk** | `AsyncBuildingSearchHandler` | Index Caching | Damaged buildings and repair/resource target indexing pre-cached in background. |
-| **Phase 3 Spatial** | `AsyncFloorRenderer` | 30x30 Spatial Chunk | 30x30 tile chunk mesh recaching offloaded to background threads. |
-| **Phase 3 Spatial** | `AsyncFogHandler` | 2D Region Chunking | Fog of War sight raycasting divided into 2D map region quadrants. |
-| **Phase 3 Spatial** | `AsyncFirePuddleHandler` | Quadrant Partitioning | Fire propagation and liquid puddle evaporation/spreading processed concurrently. |
-| **Phase 4 Range** | `AsyncTrailRenderer` | Array Range Slicing | Bullet and unit trail geometry vertex generation sliced across worker cores. |
+| **1** | `ParticleRendererController` | Async Pipeline | Activates Mindustry's built-in async particle renderer. |
+| **1** | `AsyncMinimapHandler` | 1-Frame Look-Ahead | Double-buffered `colorForTile()` computation on worker threads. |
+| **2** | `AsyncPowerGraphHandler` | Graph Topology | Independent `PowerGraph` instances updated concurrently. |
+| **2** | `AsyncTargetSearchHandler` | QuadTree Pre-search | AI unit target candidates pre-cached in parallel. |
+| **3** | `AsyncBuildingSearchHandler` | Safe Snapshot Caching | Damaged building index snapshot taken on the main thread only, then served to callers safely from cache. |
+| **3** | `AsyncFogHandler` | 2D Region Chunking | Fog-of-war raycasting split into 2D map quadrants. |
+| **4** | `AsyncFloorRenderer` | 30×30 Spatial Chunk | Floor mesh re-caching offloaded to worker threads. |
+| **4** | `AsyncFirePuddleHandler` | Quadrant Partitioning | Fire propagation and puddle evaporation processed concurrently. |
+| **4** | `AsyncTrailRenderer` | Array Range Slicing | Bullet/unit trail vertex generation sliced across cores. |
 
 ---
 
 ## 🚀 Initial World Load Optimization
 
-When entering a new map or loading a save (`WorldLoadEvent`):
-- **Parallel Minimap Generator**: Map tiles (250,000+ tiles on 500x500 maps) are partitioned by Y-rows across all worker cores, rendering full map minimaps **4x~8x faster** without single-thread loading freezes.
-- **Floor Mesh Warmup**: 30x30 tile floor mesh caching warms up in background threads prior to the first render frame.
+On `WorldLoadEvent` (map load / save load):
+- **Parallel Minimap Generator**: 250,000+ tiles partitioned by Y-row across all worker cores — full minimap rendered **4×–8× faster** with no single-thread freeze.
+- **Floor Mesh Warmup**: 30×30 tile floor mesh caches are pre-built in the background before the first rendered frame.
 
 ---
 
-## ⚙️ CPU Scheduling & Multi-tasking Policy
+## ⚙️ CPU Scheduling Policy
 
-- **Worker Core Allocation**: Allocates `totalCores - 1` worker threads (reserving 1 core for Mindustry's Main UI/OpenGL thread).
-- **Thread Priority (`Thread.NORM_PRIORITY - 1`)**: Worker threads run at slightly reduced thread priority. When background applications (web browsers, Discord, streaming) request CPU cycles, the OS scheduler naturally yields CPU time while delivering maximum frame rates during game play.
+- **Worker threads**: `totalCores - 1` threads (1 core reserved for the main OpenGL/UI thread).
+- **Thread priority**: `Thread.NORM_PRIORITY + 1` — worker threads are scheduled slightly above normal priority for faster core allocation and lower latency on offloaded work.
+
+---
+
+## 🛡️ Thread Safety Notes
+
+- `BlockIndexer.getDamaged()` mutates the underlying `Seq` in-place (`removeAll`). Calling it from a background thread while the main thread iterates `eachBlock()` causes a race condition (`items[i] = null` → NPE crash with `OverdriveProjector`).
+  **Fix**: `AsyncBuildingSearchHandler` calls `getDamaged()` **only on the main thread** and stores a `copy()` snapshot in a `ConcurrentHashMap` for safe cross-thread reads.
+- All `EntityGroup` reads (units, fire, puddle) use index-based access (`group.index(i)`) to avoid iterator invalidation.
 
 ---
 
@@ -51,6 +61,6 @@ Output: `build/libs/frame-parallelDesktop.jar`
 
 ---
 
-## 🛡️ Multiplayer Compatibility
+## 🎮 Multiplayer Compatibility
 
-This mod is strictly client-side and marked `hidden: true`. It performs no simulation state changes, packet sending, or block additions, ensuring 100% compatibility with vanilla multiplayer servers.
+`hidden: true` — render-only, no simulation state changes, no network packets, no content additions. 100% compatible with vanilla multiplayer servers.
