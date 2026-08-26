@@ -12,8 +12,8 @@ import java.util.function.BiConsumer;
  *
  * 코어 할당 및 우선순위 방식:
  *   - 코어 수 하드 캡 제한 없이 메인 GL 스레드 1개 몫을 제외한 [전체 코어 - 1]개를 워커 코어로 가동.
- *   - 워커 스레드 우선순위를 일반 스레드보다 약간 낮게(NORM_PRIORITY - 1) 설정하여
- *     타 앱이나 시스템 작업 요청 시 OS 스케줄러가 알아서 자원을 양보하도록 함.
+ *   - 워커 스레드 우선순위를 일반 스레드보다 약간 높게(NORM_PRIORITY + 1) 설정하여
+ *     코어 할당 순위가 올라가 병렬 연산이 더 빠르게 CPU 시간을 점유하도록 함.
  */
 public class RenderWorkerPool {
     private final ExecutorService pool;
@@ -28,12 +28,12 @@ public class RenderWorkerPool {
         this.pool = Executors.newFixedThreadPool(workerCount, r -> {
             Thread t = new Thread(r, "FrameParallel-Worker");
             t.setDaemon(true);
-            // 우선순위를 약간 낮추어(NORM_PRIORITY - 1) 타 앱 요청 시 자연스러운 자원 양보 유도
-            t.setPriority(Thread.NORM_PRIORITY - 1);
+            // 우선순위를 약간 높여(NORM_PRIORITY + 1) 코어 할당 속도 향상
+            t.setPriority(Thread.NORM_PRIORITY + 1);
             return t;
         });
 
-        Log.info("[FrameParallel] Worker pool initialized: @ worker threads active across @ total CPU cores (Priority: NORM_PRIORITY - 1).", workerCount, totalCores);
+        Log.info("[FrameParallel] Worker pool initialized: @ worker threads active across @ total CPU cores (Priority: NORM_PRIORITY + 1).", workerCount, totalCores);
     }
 
     /** 작업 1개를 백그라운드 워커 코어에 제출 */
