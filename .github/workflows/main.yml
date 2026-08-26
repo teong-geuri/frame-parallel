@@ -1,7 +1,7 @@
 name: Build and Release Mod
 on:
   push:
-    branches: [main]
+    branches: [master]
 
 jobs:
   buildJar:
@@ -22,11 +22,14 @@ jobs:
     - name: Set up Android SDK
       uses: android-actions/setup-android@v3
 
+    - name: Accept SDK licenses
+      run: yes | sdkmanager --licenses || true
+
     - name: Install build-tools
       run: sdkmanager "build-tools;34.0.0"
 
     - name: Set up PATH
-      run: echo "${ANDROID_HOME}/build-tools/34.0.0" >> $GITHUB_PATH
+      run: echo "${ANDROID_HOME}/build-tools/34.0.0" >> "$GITHUB_PATH"
 
     - name: Read version from mod.hjson
       id: modver
@@ -45,13 +48,12 @@ jobs:
       run: |
         if git ls-remote --tags origin | grep -q "refs/tags/${{ steps.modver.outputs.tag }}$"; then
           echo "exists=true" >> "$GITHUB_OUTPUT"
-          echo "태그 ${{ steps.modver.outputs.tag }} 는 이미 존재합니다. 스킵합니다."
+          echo "태그 ${{ steps.modver.outputs.tag }} 는 이미 존재합니다. 태그 생성은 스킵하고 빌드 결과물만 갱신합니다."
         else
           echo "exists=false" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Build mod jar
-      if: steps.checktag.outputs.exists == 'false'
       run: |
         sed -i 's/\r$//' gradlew
         chmod +x ./gradlew
@@ -65,8 +67,7 @@ jobs:
         git tag ${{ steps.modver.outputs.tag }}
         git push origin ${{ steps.modver.outputs.tag }}
 
-    - name: Create Release
-      if: steps.checktag.outputs.exists == 'false'
+    - name: Create or Update Release
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.modver.outputs.tag }}
