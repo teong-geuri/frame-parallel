@@ -2,7 +2,7 @@ package frameparallel.renderers;
 
 import arc.util.*;
 import mindustry.*;
-import mindustry.game.Team;
+import mindustry.entities.EntityGroup;
 import mindustry.gen.Groups;
 import mindustry.gen.Unit;
 import frameparallel.async.RenderWorkerPool;
@@ -49,14 +49,18 @@ public class AsyncFogHandler {
             {midX, midY, width, height}
         };
 
+        EntityGroup<Unit> units = Groups.unit;
+        if (units == null || units.isEmpty()) return;
+
         List<Future<?>> futures = new ArrayList<>(4);
 
         for (int[] reg : regions) {
             final int minX = reg[0], minY = reg[1], maxX = reg[2], maxY = reg[3];
 
             futures.add(workerPool.submit(() -> {
-                // 해당 2D 구역 범위 내 유닛/건물 시야 검사 연산
-                for (Unit u : Groups.unit) {
+                int size = units.size();
+                for (int i = 0; i < size; i++) {
+                    Unit u = units.index(i);
                     if (u != null && u.x >= minX * 8 && u.x < maxX * 8 && u.y >= minY * 8 && u.y < maxY * 8) {
                         // 구역 내 유닛 시야 기하 계산
                     }
