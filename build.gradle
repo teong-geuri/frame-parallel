@@ -8,7 +8,8 @@ ext{
     // - latest: depend on the latest release of mindustry
     // - be: depend on the very latest commit of mindustry
     // - v<number>: depend on a specific version
-    mindustryVersion = "v159.7"
+    mindustryVersion = findProperty("mindustryVersion") ?: "v159.7"
+    modVersion = findProperty("modVersion") ?: "0.0.0-dev"
     isWindows = System.getProperty("os.name").toLowerCase().contains("windows")
     sdkRoot = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
 }
@@ -46,6 +47,19 @@ dependencies{
     compileOnly mindustryVersion == "be" ? "Anuken:MindustryBuilds:latest" : "Anuken:Mindustry:$mindustryVersion"
 }
 
+def generatedModMetadata = layout.buildDirectory.file("generated/mod.hjson")
+
+tasks.register("generateModMetadata"){
+    outputs.file(generatedModMetadata)
+    doLast{
+        def source = file("mod.hjson").getText("UTF-8")
+        def metadata = source.replaceFirst(/(?m)^version:\s*.+$/, "version: ${modVersion}")
+        def output = generatedModMetadata.get().asFile
+        output.parentFile.mkdirs()
+        output.setText(metadata, "UTF-8")
+    }
+}
+
 tasks.register('jarAndroid'){
     dependsOn "jar"
     def projectName = project.name
@@ -69,15 +83,14 @@ tasks.register('jarAndroid'){
 }
 
 jar{
+    dependsOn "generateModMetadata"
     archiveFileName = "${project.name}Desktop.jar"
 
     from{
         configurations.runtimeClasspath.collect{ it.isDirectory() ? it : zipTree(it) }
     }
 
-    from(projectDir){
-        include "mod.hjson"
-    }
+    from(generatedModMetadata)
 
     from("assets/"){
         include "**"
